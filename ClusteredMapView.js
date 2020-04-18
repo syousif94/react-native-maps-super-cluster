@@ -43,14 +43,10 @@ export default class ClusteredMapView extends PureComponent {
     this.clusterize(this.props.data)
   }
 
-  componentWillReceiveProps(nextProps) {
-    if (this.props.data !== nextProps.data)
-      this.clusterize(nextProps.data)
-  }
-
-  componentWillUpdate(nextProps, nextState) {
-    if (!this.isAndroid && this.props.animateClusters && this.clustersChanged(nextState))
-      LayoutAnimation.configureNext(this.props.layoutAnimationConf)
+  componentDidUpdate(prevProps, prevState) {
+    if (prevProps.data !== this.props.data) {
+      this.clusterize(this.props.data)
+    }
   }
 
   mapRef(ref) {
@@ -63,6 +59,32 @@ export default class ClusteredMapView extends PureComponent {
 
   getClusteringEngine() {
     return this.index
+  }
+  
+  clustersComparator = ({
+      geometry: { coordinates: c1 },
+      properties: { point_count: pc1 }
+  }) => ({
+      geometry: { coordinates: c2 },
+      properties: { point_count: pc2 }
+  }) => {
+      return (
+          pc1 === pc2 &&
+          Math.abs(c1[0] - c2[0]) < Number.EPSILON &&
+          Math.abs(c1[1] - c2[1]) < Number.EPSILON
+      );
+  };
+
+  preserveUnchangedClusterIds(data) {
+    const prevClusters = this.state.data.filter(d => d.properties.cluster);
+    data.filter(d => d.properties.cluster).forEach(cluster => {
+        const comparator = this.clustersComparator(cluster);
+        const item = prevClusters.find(comparator);
+        if (item) {
+            cluster.properties.cluster_id = item.properties.cluster_id;
+        }
+    });
+    return data;
   }
 
   clusterize(dataset) {
@@ -79,7 +101,7 @@ export default class ClusteredMapView extends PureComponent {
     // load geopoints into SuperCluster
     this.index.load(rawData)
 
-    const data = this.getClusters(this.state.region)
+    const data = this.preserveUnchangedClusterIds(this.getClusters(this.state.region))
     this.setState({ data })
   }
 
